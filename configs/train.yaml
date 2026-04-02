@@ -1,0 +1,60 @@
+# PALF-Net Configuration
+# version1/configs/train.yaml
+
+project:
+  name: "palfnet"
+  seed: 42
+
+paths:
+  pretrained:
+    recognition: "pretrained/recognition"
+    pose: "pretrained/pose"
+    sr: "pretrained/sr"
+  data:
+    tinyface: "data/tinyface"
+    survface: "data/survface"
+    scface: "data/scface/organized"
+    training: "data/training"
+  output:
+    experiments: "experiments"
+    results: "results"
+
+phase0:
+  test_resolutions: [112, 64, 48, 32, 24, 16, 12, 8]
+  feasibility_threshold_deg: 15.0
+  max_test_faces: 30
+
+phase1:
+  recognition_model: "adaface_ir101_webface4m"
+  pose_bins:
+    frontal: [0, 15]
+    half_profile: [15, 45]
+    profile: [45, 90]
+
+training:
+  sr_backbone: "swinir"
+  pose_dim: 3
+  film_hidden_dim: 256
+  film_layers: 4
+  batch_size: 8
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_epochs: 5
+  total_epochs: 100
+  loss:
+    pixel_weight: 1.0
+    perceptual_weight: 0.1
+    identity_weight: 0.5
+    gan_weight: 0.01
+  degradation:
+    lr_range: [8, 48]
+    blur_kernel_range: [3, 9]
+    noise_range: [0, 15]
+    jpeg_range: [30, 95]
+  optimizer: "adam"
+  weight_decay: 0.0
+  betas: [0.9, 0.999]
+
+evaluation:
+  metrics: ["rank1", "rank5", "rank10", "tar_far001", "tar_far0001"]
+  pose_stratified: true

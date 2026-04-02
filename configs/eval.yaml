@@ -1,0 +1,10 @@
+# Evaluation settings (populated during Phase 1)
+# version1/configs/eval.yaml
+
+evaluation:
+  metrics: ["rank1", "rank5", "rank10", "tar_far001", "tar_far0001"]
+  pose_stratified: true
+  pose_bins:
+    frontal: [0, 15]
+    half_profile: [15, 45]
+    profile: [45, 90]
