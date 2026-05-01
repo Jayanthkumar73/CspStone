@@ -131,7 +131,11 @@ class PoseFiLMSRNet(nn.Module):
         Returns:
             (B, 3, 112, 112) — restored face
         """
+        # Move entire model to x device if needed
+        if next(self.parameters()).device != x.device:
+            self.to(x.device)
         # Encode pose
+        pose = pose.to(x.device)
         pose_feat = self.pose_encoder(pose)
 
         # First conv

@@ -136,7 +136,7 @@ def load_buffalo_l(model_dir: str, device: torch.device):
         app  = FaceAnalysis(name="buffalo_l", root=root,
                             providers=["CUDAExecutionProvider",
                                        "CPUExecutionProvider"])
-        app.prepare(ctx_id=0 if device.type == "cuda" else -1,
+        app.prepare(ctx_id=-1 if device.type == "cuda" else -1,
                     det_size=(112, 112))
         log.info("buffalo_l loaded")
         return app

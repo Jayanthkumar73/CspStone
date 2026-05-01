@@ -110,7 +110,7 @@ def load_fr_backbone():
         root=os.path.join(PRETRAIN, 'recognition'),
         providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
     )
-    _app.prepare(ctx_id=0, det_size=(640, 640))   # ← use 640 det_size
+    _app.prepare(ctx_id=-1, det_size=(640, 640))   # ← use 640 det_size
     log("  FR backbone: buffalo_l  (det_size=640)")
     return _app
 

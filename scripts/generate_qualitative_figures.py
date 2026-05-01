@@ -424,7 +424,7 @@ def main():
 
     fa = FaceAnalysis(name="buffalo_l", root="pretrained/recognition",
                       providers=["CUDAExecutionProvider","CPUExecutionProvider"])
-    fa.prepare(ctx_id=0, det_size=(640, 640))
+    fa.prepare(ctx_id=-1, det_size=(640, 640))
 
     print(f"Loading AdaFace-SR: {args.adaface_ckpt}")
     ada = AdaFaceSR().to(device); ada.eval()

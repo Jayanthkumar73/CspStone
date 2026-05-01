@@ -137,7 +137,7 @@ class Embedder:
             name="buffalo_l",
             root=os.path.join(PRETRAINED, "recognition"),
             providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-        self.app.prepare(ctx_id=0, det_size=(640, 640))
+        self.app.prepare(ctx_id=-1, det_size=(640, 640))
         log("  ✅ Ready")
 
     def embed(self, bgr, try_upscale=True):

@@ -102,28 +102,61 @@ class AdaFaceSRTrainer:
         except:
             log("  ⚠️ LPIPS not available")
 
-        # Optimizer
-        self.optimizer = torch.optim.Adam(
+        # Optimizer — AdamW matches paper; weight decay regularizes better
+        self.optimizer = torch.optim.AdamW(
             self.model.parameters(), lr=args.lr,
             betas=(0.9, 0.999), weight_decay=args.weight_decay)
 
         self.scheduler = CosineAnnealingLR(
             self.optimizer, T_max=args.epochs, eta_min=args.lr * 0.01)
 
-        # Dataset
+        # Dataset with train/val split by identity
         log(f"\nLoading training data from: {args.data_dir}")
-        self.dataset = PALFNetDataset(
+        full_dataset = PALFNetDataset(
             data_root=args.data_dir, hr_size=112, lr_range=(args.lr_min, args.lr_max),
             pose_cache_path=args.pose_cache, augment=True, max_samples=args.max_samples)
+
+        # Split by identity: group images by parent directory (identity folder)
+        id_to_indices = {}
+        for idx, path in enumerate(full_dataset.image_paths):
+            identity = os.path.basename(os.path.dirname(path))
+            if not identity or identity == os.path.basename(args.data_dir):
+                identity = os.path.splitext(os.path.basename(path))[0].split('_')[0]
+            id_to_indices.setdefault(identity, []).append(idx)
+
+        all_ids = sorted(id_to_indices.keys())
+        import random as _rng
+        _rng.seed(42)
+        _rng.shuffle(all_ids)
+        n_val_ids = max(1, int(len(all_ids) * 0.1))
+        val_ids = set(all_ids[:n_val_ids])
+        train_ids = set(all_ids[n_val_ids:])
+
+        train_indices = [i for ident in train_ids for i in id_to_indices[ident]]
+        val_indices = [i for ident in val_ids for i in id_to_indices[ident]]
+
+        from torch.utils.data import Subset
+        self.dataset = Subset(full_dataset, train_indices)
+        self.val_dataset = Subset(full_dataset, val_indices) if val_indices else None
+
+        log(f"  Train/Val split: {len(train_ids)} / {n_val_ids} identities, "
+            f"{len(train_indices)} / {len(val_indices)} images")
 
         self.dataloader = DataLoader(
             self.dataset, batch_size=args.batch_size, shuffle=True,
             num_workers=args.num_workers, pin_memory=True, drop_last=True)
 
+        self.val_dataloader = None
+        if self.val_dataset and len(self.val_dataset) >= args.batch_size:
+            self.val_dataloader = DataLoader(
+                self.val_dataset, batch_size=args.batch_size, shuffle=False,
+                num_workers=args.num_workers, pin_memory=True, drop_last=False)
+
         # Training state
         self.start_epoch = 0
         self.best_loss = float('inf')
         self.train_losses = []
+        self.val_metrics = []
 
         if args.resume:
             self._load_checkpoint(args.resume)
@@ -307,6 +340,39 @@ class AdaFaceSRTrainer:
         self.train_losses = ckpt.get("train_losses", [])
         log(f"  Resumed at epoch {self.start_epoch}, best_loss={self.best_loss:.4f}")
 
+    @torch.no_grad()
+    def validate(self, epoch):
+        """Compute validation identity similarity on held-out identities."""
+        if self.val_dataloader is None or self.fr_model is None:
+            return None
+        self.model.eval()
+        cos_sims = []
+        avg_alpha = 0
+        n = 0
+        for batch in self.val_dataloader:
+            lr = batch["lr"].to(self.device)
+            hr = batch["hr"].to(self.device)
+            lr_sizes = batch["lr_size"].to(self.device)
+            sr, alpha = self.model(lr, lr_sizes)
+            sr = sr.clamp(0, 1)
+            sr_norm = (sr - 0.5) / 0.5
+            hr_norm = (hr - 0.5) / 0.5
+            emb_sr = F.normalize(self.fr_model(sr_norm), dim=1)
+            emb_hr = F.normalize(self.fr_model(hr_norm), dim=1)
+            cos = (emb_sr * emb_hr).sum(dim=1)  # (B,)
+            cos_sims.extend(cos.cpu().tolist())
+            avg_alpha += alpha.mean().item() * lr.size(0)
+            n += lr.size(0)
+        self.model.train()
+        mean_cos = np.mean(cos_sims) if cos_sims else 0
+        mean_alpha = avg_alpha / max(n, 1)
+        val_info = {"epoch": epoch + 1, "cos_sim": float(mean_cos),
+                    "alpha": float(mean_alpha), "n": n}
+        self.val_metrics.append(val_info)
+        log(f"  [VAL] epoch={epoch+1} cos_sim={mean_cos:.4f} "
+            f"α={mean_alpha:.3f} (n={n} images)")
+        return val_info
+
     def plot_losses(self):
         if not self.train_losses:
             return
@@ -370,6 +436,7 @@ class AdaFaceSRTrainer:
             if (epoch + 1) % self.args.sample_every == 0 or epoch == 0:
                 self.save_samples(epoch)
             if (epoch + 1) % 5 == 0:
+                self.validate(epoch)
                 self.plot_losses()
 
         self.plot_losses()
@@ -398,18 +465,18 @@ def main():
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--weight_decay", type=float, default=0.0)
-    parser.add_argument("--lr_min", type=int, default=8)
-    parser.add_argument("--lr_max", type=int, default=48)
+    parser.add_argument("--weight_decay", type=float, default=1e-4)
+    parser.add_argument("--lr_min", type=int, default=14)
+    parser.add_argument("--lr_max", type=int, default=36)
     parser.add_argument("--num_workers", type=int, default=4)
 
     # Loss weights
     parser.add_argument("--pixel_weight", type=float, default=0.1)
     parser.add_argument("--perceptual_weight", type=float, default=0.01)
     parser.add_argument("--identity_weight", type=float, default=5.0)
-    parser.add_argument("--gate_weight", type=float, default=1.0,
+    parser.add_argument("--gate_weight", type=float, default=0.5,
                         help="Gate sparsity penalty. Higher = more bicubic-like")
-    parser.add_argument("--comparative_weight", type=float, default=10.0,
+    parser.add_argument("--comparative_weight", type=float, default=2.0,
                         help="Penalty for being worse than bicubic input. Key for beating bicubic.")
 
     # Saving

@@ -49,7 +49,7 @@ def dl_insightface():
         from insightface.app import FaceAnalysis
         app = FaceAnalysis(name='buffalo_l', root=d,
                            providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
-        app.prepare(ctx_id=0, det_size=(640, 640))
+        app.prepare(ctx_id=-1, det_size=(640, 640))
         print("  ✅ Downloaded")
         return True
     except Exception as e:

@@ -12,7 +12,7 @@ class FaceDetector:
             kwargs = {"root": root} if root else {}
             self.app = FaceAnalysis(name="buffalo_l", **kwargs,
                                     providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-            self.app.prepare(ctx_id=0, det_size=(640, 640))
+            self.app.prepare(ctx_id=-1, det_size=(640, 640))
         except Exception:
             pass
 
