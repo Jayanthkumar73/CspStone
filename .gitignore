@@ -4,7 +4,6 @@ lib/
 gfpgan/
 pretrained/
 
-
 # Experiment artifacts
 experiments/*/checkpoints/
 
@@ -12,7 +11,7 @@ experiments/*/checkpoints/
 # Python / cache
 __pycache__/
 *.pyc
-
+.ipynb_checkpoints/
 
 # Logs and outputs
 *.log
@@ -21,7 +20,7 @@ nohup.out
 *.txt
 
 # Large model files
-
+*.pth
 *.pt
 *.ckpt
 *.onnx
